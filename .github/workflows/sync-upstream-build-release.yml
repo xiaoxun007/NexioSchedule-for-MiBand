@@ -94,6 +94,10 @@ jobs:
           mkdir -p /tmp/patches
           git show main:patches/nexio-rw6-adapt.patch      > /tmp/patches/nexio-rw6-adapt.patch
           git show main:patches/nexio-sync-stability.patch > /tmp/patches/nexio-sync-stability.patch
+          # 切到上游后工作区没有 fork 专属的 signing/，需从 fork main 取回 b64（step 8 还原签名要用）
+          mkdir -p signing
+          git show main:signing/debug-certificate.pem.b64 > signing/debug-certificate.pem.b64
+          git show main:signing/debug-private.pem.b64     > signing/debug-private.pem.b64
           # 先 rw6 适配补丁（index.ux + 4 图标 + manifest designWidth=432），再 sync 稳定性补丁；
           # --3way 失败时降级普通 apply
           git apply --3way /tmp/patches/nexio-rw6-adapt.patch      || git apply /tmp/patches/nexio-rw6-adapt.patch
