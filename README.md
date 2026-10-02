@@ -2,6 +2,8 @@
 
 Nexio 课程表的 **小米手环版**，基于 Vela 快应用（aiot-toolkit）开发，可在手环 / 手表端查看课程表。
 
+已适配设备：小米手环 10 Pro（336×480）、**Redmi Watch 6（432×514，2.07″ 方形 AMOLED，本工程 `designWidth=432`）**；212×520 胶囊屏（手环 10/11）由 `../MI Band` 分支单独构建。
+
 原作者仓库（手机端）：[HaoZai000/NexioSchedule](https://github.com/HaoZai000/NexioSchedule)
 
 ## 功能

@@ -1,5 +1,14 @@
 # 更新日志
 
+## 1.2.0（versionCode 32）
+
+- **新增 Redmi Watch 6 适配**（432×514，2.07 英寸方形 AMOLED）：`designWidth` 由 336 改为 432，首页 / 关于 / 打赏三个视图的全部硬编码 px 按新设计空间逐处重推。
+  - 宽相关（width / left / right / 左右 padding·margin / min-width）≈ ×432/336；高相关（height / min-height / top / bottom / 上下 padding·margin）≈ ×514/480；字号 ≈ ×1.2；圆角 ≈ ×1.2。
+  - 可滚高度按「屏高 + 40」取 554、关于页按「屏高 + 140」取 654；空态文案中心按 514/2=257 重排。
+  - 左缘「右滑回桌面」手势阈值 `EDGE_W` 由 12 调到 15（与屏宽同比例）。
+- 图标资源（icon / tab_home / tab_about / about_icon）按约 1.2 倍重存为更清晰 PNG；照片类（photo1 / photo2 / reward_qr）保持原文件。
+- package 仍为 `com.haooz.chedule`（XMS 互联互通依赖包名，未改）。
+
 ## 1.1.1（versionCode 31）
 
 - **修复小米手环 9 Pro 左右横滑黑屏、点不动**：根因是**切日时重建了带 `scroll` 的层节点**，Vela 3.6 上重建后整层不渲染 → 整屏黑且触摸无效（底部 Tab 在 `stack` 之外，所以它一直还是活的）。

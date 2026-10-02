@@ -59,7 +59,7 @@
           <image class="app-icon" src="/common/about_icon.png"></image>
           <div class="app-text">
             <text class="app-name">nexio课程表</text>
-            <text class="app-ver">版本: v1.1.1</text>
+            <text class="app-ver">版本: v1.2.0</text>
           </div>
         </div>
       </div>
@@ -151,8 +151,8 @@ import schedule from '../../common/schedule'
 import util from '../../common/util'
 import device from '@system.device'
 
-/** 左缘留给系统「右滑回桌面」的宽度，与 .sys-back-edge 保持一致 */
-const EDGE_W = 12
+/** 左缘留给系统「右滑回桌面」的宽度，与 .sys-back-edge 保持一致（432 宽屏按屏宽比例放大） */
+const EDGE_W = 15
 
 export default {
   private: {
@@ -377,7 +377,7 @@ export default {
     position: absolute;
     left: 0px;
     top: 0px;
-    width: 10px;
+    width: 15px;
     height: 100%;
     background-color: transparent;
   }
@@ -395,18 +395,18 @@ export default {
   .screen {
     width: 100%;
     flex-direction: column;
-    padding-top: 28px;
-    padding-right: 10px;
-    padding-bottom: 110px;
-    padding-left: 10px;
-    /* 保证可滚动/回弹：内容不足一屏时也有滚动高度 */
-    min-height: 520px;
+    padding-top: 30px;
+    padding-right: 13px;
+    padding-bottom: 118px;
+    padding-left: 13px;
+    /* 保证可滚动/回弹：内容不足一屏时也有滚动高度（514 屏 = 屏高 + 40） */
+    min-height: 554px;
   }
 
-  /* 标题区约 114px，height=240 使文案中心落在屏幕垂直中线附近 */
+  /* 标题区约 122px，height=270 使文案中心落在屏幕垂直中线（514/2=257）附近 */
   .empty-wrap {
     width: 100%;
-    height: 220px;
+    height: 270px;
     justify-content: center;
     align-items: center;
   }
@@ -416,22 +416,22 @@ export default {
     justify-content: center;
     align-items: center;
     background-color: #242424;
-    border-radius: 18px;
-    padding-top: 14px;
-    padding-right: 24px;
-    padding-bottom: 14px;
-    padding-left: 24px;
+    border-radius: 22px;
+    padding-top: 15px;
+    padding-right: 31px;
+    padding-bottom: 15px;
+    padding-left: 31px;
   }
 
   .empty-title {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #d1d1d6;
     text-align: center;
   }
 
   .empty-sub {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: bold;
     color: #8e8e93;
     text-align: center;
@@ -451,38 +451,38 @@ export default {
   .weekday {
     flex-grow: 1;
     flex-shrink: 1;
-    font-size: 30px;
+    font-size: 36px;
     font-weight: bold;
     color: #ffffff;
     lines: 1;
   }
 
   .clock {
-    width: 88px;
-    height: 38px;
+    width: 113px;
+    height: 41px;
     flex-shrink: 0;
-    font-size: 26px;
+    font-size: 31px;
     font-weight: bold;
     color: #ffffff;
-    margin-left: 6px;
+    margin-left: 8px;
     text-align: right;
     lines: 1;
   }
 
   /* 与时间同宽，避免右上角错位 */
   .today-btn {
-    width: 88px;
-    height: 38px;
+    width: 113px;
+    height: 41px;
     flex-shrink: 0;
     justify-content: center;
     align-items: center;
     background-color: #242424;
-    border-radius: 30px;
-    margin-left: 6px;
+    border-radius: 36px;
+    margin-left: 8px;
   }
 
   .today-btn-text {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #3381FF;
     text-align: center;
@@ -491,23 +491,23 @@ export default {
 
   .date-text {
     width: 100%;
-    font-size: 30px;
+    font-size: 36px;
     font-weight: bold;
     color: #ffffff;
-    margin-bottom: 16px;
+    margin-bottom: 17px;
     lines: 1;
   }
 
   .card {
     width: 100%;
     flex-direction: column;
-    padding-top: 14px;
-    padding-right: 12px;
-    padding-bottom: 14px;
-    padding-left: 12px;
+    padding-top: 15px;
+    padding-right: 15px;
+    padding-bottom: 15px;
+    padding-left: 15px;
     background-color: #242424;
-    border-radius: 16px;
-    margin-bottom: 12px;
+    border-radius: 19px;
+    margin-bottom: 13px;
     overflow: visible;
   }
 
@@ -532,12 +532,12 @@ export default {
   .strong-next {
     flex-grow: 1;
     flex-shrink: 1;
-    min-width: 96px;
+    min-width: 123px;
     lines: -1;
-    font-size: 22px;
+    font-size: 26px;
     font-weight: bold;
-    margin-left: 6px;
-    margin-right: 6px;
+    margin-left: 8px;
+    margin-right: 8px;
     margin-bottom: 5px;
     color: #ffffff;
     overflow: visible;
@@ -545,17 +545,17 @@ export default {
 
   /* 列表课名 */
   .strong {
-    font-size: 22px;
+    font-size: 26px;
     font-weight: bold;
     width: 100%;
-    margin-left: 2px;
-    margin-right: 5px;
+    margin-left: 3px;
+    margin-right: 6px;
     margin-bottom: 5px;
     color: #ffffff;
   }
 
   .blue {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: bold;
     flex-shrink: 0;
     margin-bottom: 5px;
@@ -563,7 +563,7 @@ export default {
   }
 
   .meta {
-    font-size: 17px;
+    font-size: 20px;
     font-weight: bold;
     color: #8e8e93;
     lines: -1;
@@ -573,32 +573,32 @@ export default {
     width: 100%;
     flex-direction: row;
     margin-top: 5px;
-    margin-bottom: 9px;
+    margin-bottom: 10px;
   }
 
   .tag {
-    font-size: 15px;
+    font-size: 18px;
     font-weight: bold;
     color: #d1d1d6;
     background-color: #242424;
-    border-radius: 8px;
+    border-radius: 10px;
     padding-top: 4px;
-    padding-right: 10px;
+    padding-right: 13px;
     padding-bottom: 4px;
-    padding-left: 10px;
+    padding-left: 13px;
   }
 
-  /* 仅增加可滚高度以触发回弹，不改变关于页内部布局 */
+  /* 仅增加可滚高度以触发回弹，不改变关于页内部布局（514 屏 = 屏高 + 140） */
   .screen-about {
-    min-height: 620px;
+    min-height: 654px;
   }
 
   .page-title {
     width: 100%;
-    font-size: 32px;
+    font-size: 38px;
     font-weight: bold;
     color: #ffffff;
-    margin-bottom: 14px;
+    margin-bottom: 15px;
   }
 
   .row-app {
@@ -607,10 +607,10 @@ export default {
   }
 
   .app-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    margin-right: 12px;
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    margin-right: 15px;
   }
 
   .app-text {
@@ -618,46 +618,46 @@ export default {
   }
 
   .app-name {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #ffffff;
     margin-bottom: 4px;
   }
 
   .app-ver {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: bold;
     color: #8e8e93;
   }
 
   .section-label {
     width: 100%;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: bold;
     color: #8e8e93;
     margin-top: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 9px;
   }
 
   .person {
     width: 100%;
     flex-direction: row;
     align-items: center;
-    margin-bottom: 14px;
+    margin-bottom: 15px;
   }
 
   /* 人员卡：行距作底部留白，避免双倍 */
   .people-card {
-    padding-top: 14px;
+    padding-top: 15px;
     padding-bottom: 0px;
   }
 
   /* 图已预裁圆形透明边，勿再用 border-radius 二次硬裁 */
   .avatar {
-    width: 46px;
-    height: 46px;
+    width: 52px;
+    height: 52px;
     background-color: transparent;
-    margin-right: 12px;
+    margin-right: 15px;
   }
 
   .person-text {
@@ -669,40 +669,40 @@ export default {
   .person-name {
     width: 100%;
     text-align: left;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #ffffff;
     margin-bottom: 4px;
-    margin-left: 5px;
+    margin-left: 6px;
   }
 
   .person-role {
     width: 100%;
     text-align: left;
-    font-size: 14px;
+    font-size: 17px;
     font-weight: bold;
     color: #8e8e93;
-    margin-left: 5px;
+    margin-left: 6px;
   }
 
-  /* 悬浮 Tab：原样紧凑胶囊，宽高各 +10px 等比放大，不横向拉伸 */
+  /* 悬浮 Tab：原样紧凑胶囊，按新屏宽/屏高等比重推，不横向拉伸 */
   .tab-bar {
     position: absolute;
-    left: 95px;
-    right: 95px;
-    bottom: 30px;
-    height: 65px;
+    left: 122px;
+    right: 122px;
+    bottom: 32px;
+    height: 70px;
     flex-direction: row;
     background-color: #282828;
-    border-radius: 40px;
+    border-radius: 48px;
     align-items: center;
     overflow: visible;
-    box-shadow: 0px 6px 18px rgba(0, 0, 0, 0.18);
+    box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.18);
   }
 
   .tab-btn {
     width: 50%;
-    height: 65px;
+    height: 70px;
     flex-shrink: 0;
     flex-direction: column;
     justify-content: center;
@@ -712,22 +712,22 @@ export default {
 
   /* 固定插槽，避免选中态被压成圆点 */
   .tab-slot {
-    width: 65px;
-    height: 55px;
+    width: 84px;
+    height: 59px;
     margin-top: -1px;
     overflow: visible;
   }
 
   /* 选中：比外框小一圈的嵌套胶囊 */
   .tab-hl {
-    width: 65px;
-    height: 55px;
-    min-width: 65px;
-    min-height: 55px;
+    width: 84px;
+    height: 59px;
+    min-width: 84px;
+    min-height: 59px;
     position: absolute;
     left: 0px;
     top: 0px;
-    border-radius: 40px;
+    border-radius: 48px;
     background-color: #353535;
     flex-direction: column;
     justify-content: center;
@@ -737,14 +737,14 @@ export default {
 
   /* 未选中：同尺寸透明占位，避免图标跳动 */
   .tab-hl-off {
-    width: 65px;
-    height: 55px;
-    min-width: 65px;
-    min-height: 55px;
+    width: 84px;
+    height: 59px;
+    min-width: 84px;
+    min-height: 59px;
     position: absolute;
     left: 0px;
     top: 0px;
-    border-radius: 40px;
+    border-radius: 48px;
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -753,16 +753,16 @@ export default {
 
   /* 选中框+图标向内收：覆盖 left，左往右、右往左 */
   .tab-in-l {
-    left: 2px;
+    left: 3px;
   }
 
   .tab-in-r {
-    left: -2px;
+    left: -3px;
   }
 
   .tab-icon {
-    width: 43px;
-    height: 43px;
+    width: 52px;
+    height: 52px;
     flex-shrink: 0;
     align-self: center;
   }
@@ -776,40 +776,40 @@ export default {
   }
 
   .entry-label {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: bold;
     color: #ffffff;
     lines: 1;
   }
 
   .entry-hint {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: bold;
     color: #3381FF;
     lines: 1;
   }
 
   /* ---------------- 打赏页 ----------------
-     标题两行居中，白卡片放收款码（素材 232x252，按 230x251 放，接近 1:1）。
-     卡片底边 376，留在悬浮 Tab（顶部 385）之上，不会被压住。 */
+     标题两行居中，白卡片放收款码（素材 232x252，按 248x270 放，保持原比例）。
+     卡片底边约 405，留在悬浮 Tab（顶部约 412）之上，不会被压住。 */
   .screen-reward {
     width: 100%;
-    min-height: 520px;
+    min-height: 554px;
     flex-direction: column;
     align-items: center;
-    padding-bottom: 110px;
+    padding-bottom: 118px;
   }
 
   .reward-head {
     width: 100%;
-    padding-top: 36px;
+    padding-top: 39px;
     flex-direction: column;
     align-items: center;
   }
 
   .reward-title {
-    height: 37px;
-    font-size: 30px;
+    height: 40px;
+    font-size: 36px;
     font-weight: bold;
     color: #ffffff;
     text-align: center;
@@ -817,11 +817,11 @@ export default {
   }
 
   .reward-card {
-    width: 230px;
-    height: 251px;
-    margin-top: 15px;
+    width: 248px;
+    height: 270px;
+    margin-top: 16px;
     background-color: #ffffff;
-    border-radius: 12px;
+    border-radius: 14px;
     overflow: hidden;
     flex-direction: column;
     justify-content: center;
@@ -829,8 +829,8 @@ export default {
   }
 
   .reward-qr {
-    width: 230px;
-    height: 251px;
+    width: 248px;
+    height: 270px;
     flex-shrink: 0;
   }
 </style>
