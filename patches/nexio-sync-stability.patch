@@ -1,0 +1,108 @@
+diff --git a/src/common/sync.js b/src/common/sync.js
+index 0a5fae8..3da2ef5 100644
+--- a/src/common/sync.js
++++ b/src/common/sync.js
+@@ -91,6 +91,10 @@ let lastAt = 0
+ let lastRequestAt = 0
+ let retryTimer = null
+ let retryCount = 0
++/** 最近一次成功收到并应用手机数据的时间（0 = 从未收到），入站静默看门狗用 */
++let lastInboundAt = 0
++/** 入站静默看门狗定时器句柄 */
++let watchdogTimer = null
+ 
+ function notify() {
+   for (let i = 0; i < listeners.length; i++) {
+@@ -645,7 +649,24 @@ function handlePhoneMessage(raw) {
+   lastSource = 'phone'
+   lastShape = result.shape || ''
+   lastAt = result.payload.savedAt
++  // 归一化成功即回 ACK（无论数据是否重复）：手机端按收到的 sentAt 匹配确认
++  if (connect) {
++    connect.send({
++      data: {
++        protocol: PROTOCOL,
++        version: PROTOCOL_VERSION,
++        action: ACTION.ACK,
++        rev: rev,
++        sentAt: result.payload.sentAt || Date.now()
++      },
++      success: function () {},
++      fail: function (d, c) {
++        console.log('[sync] ack fail', c)
++      }
++    })
++  }
+   applyPayload(result.payload)
++  lastInboundAt = Date.now()
+   persist(result.payload, function () {
+     if (rev === appliedRev) notify()
+   })
+@@ -673,11 +694,23 @@ function bindConnect() {
+   connect.onclose = function (data) {
+     ready = false
+     lastError = (data && data.data) || 'closed'
++    // 通道已断：清掉挂起的重试链，避免旧定时器在重连后误触发
++    if (retryTimer) {
++      clearTimeout(retryTimer)
++      retryTimer = null
++    }
++    retryCount = 0
+     console.log('[sync] interconnect closed', lastError)
+   }
+   connect.onerror = function (data) {
+     ready = false
+     lastError = (data && (data.data || data.code)) || 'error'
++    // 通道出错：同样清掉挂起的重试链并归零计数
++    if (retryTimer) {
++      clearTimeout(retryTimer)
++      retryTimer = null
++    }
++    retryCount = 0
+     console.log('[sync] interconnect error', lastError)
+   }
+ }
+@@ -736,6 +769,23 @@ function scheduleRetry() {
+   }, RETRY_DELAY_MS)
+ }
+ 
++/**
++ * 入站静默看门狗：通道标记就绪后，若曾经收到过数据却超过 60s 没有任何新数据进来，
++ * 说明连接「假活」（onopen 触发但消息通道实际已断）。此时置就绪为假并重新请求一次。
++ * 只在 lastInboundAt>0（曾有数据）时才判断，不误杀刚连上还没收到数据的正常通道；
++ * 与 5 分钟的 STALE_MS/ensureFresh 互补，这里只针对假活通道、更激进。
++ */
++function startWatchdog() {
++  if (watchdogTimer) return
++  watchdogTimer = setInterval(function () {
++    if (!ready || !lastInboundAt) return
++    if (Date.now() - lastInboundAt <= 60000) return
++    console.log('[sync] inbound silent >60s, watchdog re-request')
++    ready = false
++    requestSync('watchdog')
++  }, 60000)
++}
++
+ /**
+  * 页面 onShow 调用：数据过期（或从未同步过）就主动向手机要一次。
+  * 解决「手机上点推送手表没反应」里手表这一侧的问题：
+@@ -761,6 +811,8 @@ function ensureFresh(reason) {
+  * 有缓存时即使手机不在身边，页面也能显示上次同步的课表。
+  */
+ function init() {
++  // 入站静默看门狗：尽早启动，用于识别「假活」通道（重复 init 不会重复起定时器）
++  startWatchdog()
+   // 缓存必须先读：冷启动时不依赖任何连接状态
+   try {
+     storage.get({
+@@ -812,6 +864,10 @@ function init() {
+ }
+ 
+ function teardown() {
++  if (watchdogTimer) {
++    clearInterval(watchdogTimer)
++    watchdogTimer = null
++  }
+   if (retryTimer) {
+     clearTimeout(retryTimer)
+     retryTimer = null

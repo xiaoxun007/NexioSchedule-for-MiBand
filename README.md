@@ -86,6 +86,26 @@ python tools/create_github_release.py <版本>                        # 建 Rele
 
 当前版本见 `src/manifest.json`（versionName / versionCode），历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+## 自动同步与定制补丁（本 fork）
+
+本 fork 通过 GitHub Actions 自动跟踪上游 [Alittlejelly/NexioSchedule-for-MiBand](https://github.com/Alittlejelly/NexioSchedule-for-MiBand)，把「rw6 适配 + 互联稳定性」做成可重放补丁，避免手工 merge 冲突。
+
+- **workflow**：`.github/workflows/sync-upstream-build-release.yml`
+  每小时（`cron: 0 * * * *`）+ 手动 `workflow_dispatch` 触发：
+  1. fetch 上游 `main`，用 `git merge-base --is-ancestor` 判断是否有新提交；
+  2. 有更新时保存 `patches/`、`signing/`、本 workflow、`README.md`、`CHANGELOG.md` → `git reset --hard upstream/main` → 恢复 → commit → `git push --force origin main`；
+  3. 切到 `build-snapshot`（基于干净上游 `main`），从 `main:patches/` 取出补丁依次 `git apply --3way || git apply`；
+  4. 注入版本号 → 还原签名证书 → `npm ci` → `npx aiot build` → 发布 Release。
+- **定制补丁**（`patches/`，可干净重放到上游 `main` 之上）：
+  - `nexio-rw6-adapt.patch`：`src/pages/index/index.ux` 按 432×514 重推、4 枚定制 PNG 图标（`--binary`）、`manifest.json` 的 `designWidth 336→432`。
+  - `nexio-sync-stability.patch`：`src/common/sync.js` 的入站 ACK 回包、断线清重试链、60s 入站静默看门狗。
+  - 版本号（`versionName`/`versionCode`）**不进补丁**，由 workflow 每次构建动态写入 `manifest.json` 与 `rpk_info.json`。
+- **版本规则**（与手机端完全一致）：`versionName = 上游版本名 + -gh{n}`，`versionCode = 上游 versionCode × 100 + n`。`n` 按 tag 前缀 `v{版本}-gh` 计数（同上游版本下递增），上游新版本发布后 tag 前缀变化、`n` 自然从 1 重计。与上游 vc 错开、fork 间单调递增，可直接覆盖安装。
+- **签名**：`sign/` 不入库；CI 从 `signing/*.pem.b64`（base64 入库）还原 `sign/debug/{certificate,private}.pem`，由 `npx aiot build` 自动签名。该调试证书与手机端 debug keystore **同证书**（XMS 互连要求包名 `com.haooz.chedule` + 同签名）。
+- 产物资产：`NexioSchedule-rw6-v{上游版本}-gh{n}.rpk`。
+
+> 注：本仓库 `.gitignore` 忽略了 `.github/`，首次提交 workflow 需 `git add -f .github/workflows/sync-upstream-build-release.yml`。
+
 ## License
 
 请遵循原作者仓库的许可协议。
