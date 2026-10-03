@@ -1,21 +1,8 @@
 diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
-index b778cd0..df22070 100644
+index 5d0f613..6102bc4 100644
 --- a/src/pages/index/index.ux
 +++ b/src/pages/index/index.ux
-@@ -137,9 +137,9 @@ import app from '@system.app'
- const EDGE_W = 15
- 
- /** 手势分区阈值：起手 y >= 此值算作「下部 Tab 区」（左右滑切日期），否则为「上部日期区」
-- * （右滑退出应用 / 左滑进关于页）。下移后 .tab-bar 顶部约 y=430，向上留约 15px 缓冲，
-- * 避免紧贴 Tab 上缘的滑动被误判为退出。 */
--const LOWER_ZONE_Y = 415
-+ * （右滑退出应用 / 左滑进关于页）。紧凑化后 .tab-bar 高 58、bottom:14 → 顶部约 y=442，
-+ * 向上留约 15px 缓冲（=427），避免紧贴 Tab 上缘的滑动被误判为退出。 */
-+const LOWER_ZONE_Y = 427
- 
- export default {
-   private: {
-@@ -753,17 +753,17 @@ export default {
+@@ -777,17 +777,17 @@ export default {
      margin-left: 6px;
    }
  
@@ -39,7 +26,7 @@ index b778cd0..df22070 100644
      align-items: center;
      overflow: visible;
      box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.18);
-@@ -779,24 +779,24 @@ export default {
+@@ -803,24 +803,24 @@ export default {
      overflow: visible;
    }
  
@@ -72,7 +59,7 @@ index b778cd0..df22070 100644
      background-color: #353535;
      flex-direction: column;
      justify-content: center;
-@@ -806,14 +806,14 @@ export default {
+@@ -830,14 +830,14 @@ export default {
  
    /* 未选中：同尺寸透明占位，避免图标跳动 */
    .tab-hl-off {
