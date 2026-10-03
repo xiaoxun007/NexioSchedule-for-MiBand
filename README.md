@@ -1,111 +1,66 @@
-# NexioSchedule-for-MiBand
+# NexioSchedule for Redmi Watch 6（课程表手环端）
 
-Nexio 课程表的 **小米手环版**，基于 Vela 快应用（aiot-toolkit）开发，可在手环 / 手表端查看课程表。
+Redmi Watch 6 适配版课程表手环端——在小米手环/手表上显示手机推送的课程表。
 
-已适配设备：小米手环 10 Pro（336×480）、**Redmi Watch 6（432×514，2.07″ 方形 AMOLED，本工程 `designWidth=432`）**；212×520 胶囊屏（手环 10/11）由 `../MI Band` 分支单独构建。
+## 项目定位
 
-原作者仓库（手机端）：[HaoZai000/NexioSchedule](https://github.com/HaoZai000/NexioSchedule)
+本项目 fork 自 [Alittlejelly/NexioSchedule-for-MiBand](https://github.com/Alittlejelly/NexioSchedule-for-MiBand)，
+针对 **Redmi Watch 6（432×514）** 做屏幕适配与使用体验定制；上游负责协议兼容与基础功能，
+本仓库在其之上叠加独立的定制层（补丁链方式维护，见文末「与上游关系」）。
 
-## 功能
+## 与上游的定制差异
 
-- 手环端课程表展示（首页 / 关于 / 打赏三个视图）
-- 通过 `system.interconnect` 与手机端同步课程数据，兼容手机端多种下发格式：
-  - 按日期直推（`days`，手环纯映射渲染，可显示任意日期）
-  - 整表（`courses` + `settings` + `times`）
-  - 按周分桶（`week`，星期编号 0-6 或 1-7，可带每门课的周次规则）
-- 教学周、单双周 / 选周、节次时间、假期与调休一律以手机下发数据为准，手环不自行推算
-- 本地存储（`system.storage`）缓存课表：断开手机或冷启动后仍可查看
-- 打开应用时按需向手机拉取一次，请求无响应会自动重试
-- 首页显示「· 第 N 周」，关于页提供「同步诊断」（数据来源 / 收到次数 / 最近的数据格式）
-- 关于页提供打赏入口（`/common/reward_qr.png`），打赏页可向右侧滑返回
+- **432×514 屏幕适配**：designWidth 与布局尺寸按 Redmi Watch 6 重排，铺满小屏
+- **纯被动同步**：只等手机端推送，收到即回 ACK；不主动轮询、不重试，省电
+- **时段分组圆角卡片**：课程列表按上午/下午/晚上分组成圆角卡片，易扫读
+- **手势分区**：课表区左右滑切日期、顶部日期区右滑退出/左滑进关于页；坐标不可用时安全退化为全屏切日，绝不误退出
+- **Tab 紧凑化**：悬浮 Tab 容器收窄、图标大小不变、点击热区不减
+- **去打赏入口**：移除关于页打赏二维码
+- **时钟最小定时**：页面定时器只刷本地时钟与诊断，省电
+- **关于页诊断**：未连接手机时显示「手机未连接」状态
 
-## 项目结构
+## 配套手机端
 
-```
-src/                 # 应用源码
-  app.ux             # 应用入口
-  pages/index/       # 主页面（首页 / 关于 / 打赏 三个视图，靠 isHome / isAbout / isReward 切换）
-  common/            # 工具与资源（schedule / sync / util / reward_qr.png）
-  manifest.json      # 应用配置
-tools/               # 辅助脚本
-  check-wearable-sync.mjs   # 与手机端通讯的回归检查（不需要设备）
-  create_github_release.py  # 发布 GitHub Release 并上传 rpk
-  release-body.md           # 上一步使用的 Release 说明
-release/             # 随仓库发布的 rpk（两个分辨率）
-CHANGELOG.md         # 更新日志
-```
+需配合 [xiaoxun007/NexioSchedule](https://github.com/xiaoxun007/NexioSchedule)（手机端 App）使用：
+手机端点「推送到手环」或课表变更时自动推送到本手环端；手环回 ACK 后手机端给出
+推送确认（Snackbar / 诊断）。两端共用同一签名证书与包名 `com.haooz.chedule`。
 
-> 胶囊屏版本 `../MI Band` 的 `node_modules` 是一个指向本工程 `node_modules` 的 junction，
-> 借此共用同一套 aiot-toolkit。**请不要删除本工程的 `node_modules`**，否则那边也构建不了。
+## 安装
 
-## 开发环境
+从 [Releases](https://github.com/xiaoxun007/NexioSchedule-for-Redmiwatch6/releases) 下载
+`NexioSchedule-rw6-v*.rpk`，经小米运动健康/小米 AIoT-IDE 开发者工具导入到 Redmi Watch 6。
 
-- Node.js
-- [aiot-toolkit](https://www.npmjs.com/package/aiot-toolkit)（小米 Vela 快应用工具链）
+## 版本规则
+
+- Release tag = `v{上游versionName}-gh{n}`：同一上游版本下自增 gh 计数
+- 上游发布新版本后 tag 前缀变化，gh 计数从 1 重新计
+- versionCode = 上游 versionCode × 100 + gh{n}
+- 资产名固定 `NexioSchedule-rw6-v{上游versionName}-gh{n}.rpk`
+
+## 构建
 
 ```bash
-npm install
-npm run server   # 本地预览（watch）
-npm run build    # 构建
-npm run release  # 发布构建
+npm ci
+npx aiot build
 ```
 
-## 测试
+产物在 `dist/` 下，签名使用仓库 `signing/` 内入库的 debug 证书（与手机端同证书 SHA1
+`75:47:C9:F5:54:21:AF:C8:FC:F2:A8:71:1D:DC:3C:E4:29:98:FA:87`）。
 
-与手机端的通讯逻辑有回归检查（纯 Node，不需要设备，也不依赖 aiot-toolkit）：
+## 已向上游贡献
 
-```bash
-node tools/check-wearable-sync.mjs                      # 协议 / 周次 / 调休 / 缓存
-node tools/check-wearable-sync.mjs 我的课表.json         # 追加真实课表的端到端校验
-```
+以下改进已整理为面向上游的 Pull Request（见
+[Alittlejelly/NexioSchedule-for-MiBand PR](https://github.com/Alittlejelly/NexioSchedule-for-MiBand/pulls)）：
 
-覆盖：按周分桶（键 0-6 / 1-7）、整表、按日期直推、`data` 包裹、周次规则
-（`selectedWeeks` / 单双周 / 周次范围）、假期隐藏、调休按 `followWeek` 补课、
-时间与节次解析、冷启动缓存回放。
+- PR #1 feat(sync): 收到整包回 ACK，并在断连/出错时清理重试链
+- PR #2 feat(ui): 课程列表按时段分组为圆角卡片
+- PR #3 feat(gesture): 按区域分区分发滑动手势
+- PR #4 feat(ui): 悬浮 Tab 栏紧凑化
+- PR #5 refactor(sync): 纯被动接收模式
 
-## 发布
+## 与上游关系（自动同步 + 补丁链）
 
-```bash
-npm run release                                                   # 生成 dist/com.haooz.chedule.release.<版本>.rpk
-cp dist/com.haooz.chedule.release.<版本>.rpk "release/Nexio 课程表（小米手环10Pro）.rpk"
-python tools/create_github_release.py <版本>                        # 建 Release 并上传两个 rpk
-```
-
-`release/` 下两个 rpk 随版本更新（胶囊屏那份由 `../MI Band` 构建后复制过来）。
-
-## 签名说明
-
-签名证书与私钥位于 `sign/` 目录（**已从仓库排除，请勿提交**）。
-
-- `sign/debug/`   — 调试签名
-- `sign/release/` — 发布签名
-
-如需重新生成签名文件，可参考 `tools/extract-sign.ps1`。
-
-## 版本
-
-当前版本见 `src/manifest.json`（versionName / versionCode），历史见 [CHANGELOG.md](./CHANGELOG.md)。
-
-## 自动同步与定制补丁（本 fork）
-
-本 fork 通过 GitHub Actions 自动跟踪上游 [Alittlejelly/NexioSchedule-for-MiBand](https://github.com/Alittlejelly/NexioSchedule-for-MiBand)，把「rw6 适配 + 互联稳定性」做成可重放补丁，避免手工 merge 冲突。
-
-- **workflow**：`.github/workflows/sync-upstream-build-release.yml`
-  每小时（`cron: 0 * * * *`）+ 手动 `workflow_dispatch` 触发：
-  1. fetch 上游 `main`，用 `git merge-base --is-ancestor` 判断是否有新提交；
-  2. 有更新时保存 `patches/`、`signing/`、本 workflow、`README.md`、`CHANGELOG.md` → `git reset --hard upstream/main` → 恢复 → commit → `git push --force origin main`；
-  3. 切到 `build-snapshot`（基于干净上游 `main`），从 `main:patches/` 取出补丁依次 `git apply --3way || git apply`；
-  4. 注入版本号 → 还原签名证书 → `npm ci` → `npx aiot build` → 发布 Release。
-- **定制补丁**（`patches/`，可干净重放到上游 `main` 之上）：
-  - `nexio-rw6-adapt.patch`：`src/pages/index/index.ux` 按 432×514 重推、4 枚定制 PNG 图标（`--binary`）、`manifest.json` 的 `designWidth 336→432`。
-  - `nexio-sync-stability.patch`：`src/common/sync.js` 的入站 ACK 回包、断线清重试链、60s 入站静默看门狗。
-  - 版本号（`versionName`/`versionCode`）**不进补丁**，由 workflow 每次构建动态写入 `manifest.json` 与 `rpk_info.json`。
-- **版本规则**（与手机端完全一致）：`versionName = 上游版本名 + -gh{n}`，`versionCode = 上游 versionCode × 100 + n`。`n` 按 tag 前缀 `v{版本}-gh` 计数（同上游版本下递增），上游新版本发布后 tag 前缀变化、`n` 自然从 1 重计。与上游 vc 错开、fork 间单调递增，可直接覆盖安装。
-- **签名**：`sign/` 不入库；CI 从 `signing/*.pem.b64`（base64 入库）还原 `sign/debug/{certificate,private}.pem`，由 `npx aiot build` 自动签名。该调试证书与手机端 debug keystore **同证书**（XMS 互连要求包名 `com.haooz.chedule` + 同签名）。
-- 产物资产：`NexioSchedule-rw6-v{上游版本}-gh{n}.rpk`。
-
-> 注：本仓库 `.gitignore` 忽略了 `.github/`，首次提交 workflow 需 `git add -f .github/workflows/sync-upstream-build-release.yml`。
-
-## License
-
-请遵循原作者仓库的许可协议。
+本仓库由 GitHub Actions 每小时自动对齐上游 `main`：reset 到上游最新后，按序重放
+`patches/` 下的定制补丁（rw6-adapt → sync-stability → group-card → passive-mode →
+gesture-nav → remove-reward → tab-compact），再自动构建发布 `-gh{n}`。
+`patches/`、`signing/`、本 README 在同步时受保护、不会被上游覆盖。
