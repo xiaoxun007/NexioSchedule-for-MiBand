@@ -130,7 +130,7 @@ jobs:
           # 且随上游 vc 自增自动留出足够 headroom。当前本地手工版 vc33 << 3101，可直接覆盖升级。
           UP_VNAME=$(python3 -c "import json;print(json.load(open('src/manifest.json'))['versionName'])")
           UP_VC=$(python3 -c "import json;print(json.load(open('src/manifest.json'))['versionCode'])")
-          GH_N=$(gh release list --repo xiaoxun007/NexioSchedule-for-MiBand --limit 200 2>/dev/null \
+          GH_N=$(gh release list --repo xiaoxun007/NexioSchedule-for-Redmiwatch6 --limit 200 2>/dev/null \
                  | grep -c "^v${UP_VNAME}-gh" || true)
           GH_N=$((GH_N + 1))
           FORK_VNAME="${UP_VNAME}-gh${GH_N}"
@@ -228,6 +228,6 @@ jobs:
           print(notes)
           PYEOF
           gh release create "$TAG" "$ASSET" \
-            --repo xiaoxun007/NexioSchedule-for-MiBand \
+            --repo xiaoxun007/NexioSchedule-for-Redmiwatch6 \
             --title "$TAG" \
             --notes-file /tmp/release_notes.md || echo "Release 已存在或创建失败（忽略）"
