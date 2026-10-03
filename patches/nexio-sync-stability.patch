@@ -1,0 +1,104 @@
+diff --git a/src/common/sync.js b/src/common/sync.js
+index 656d507..4e5549e 100644
+--- a/src/common/sync.js
++++ b/src/common/sync.js
+@@ -108,6 +108,10 @@ let lastAt = 0
+ let lastRequestAt = 0
+ let retryTimer = null
+ let retryCount = 0
++/** 最近一次成功收到并应用手机数据的时间（0 = 从未收到），入站静默看门狗用 */
++let lastInboundAt = 0
++/** 入站静默看门狗定时器句柄 */
++let watchdogTimer = null
+ /** 定时轮询句柄 */
+ let pollTimer = null
+ /** 本次连接是否已弹过「已连接手机」toast（断开后重置，重连才再弹） */
+@@ -743,7 +747,24 @@ function handlePhoneMessage(raw) {
+   lastSource = 'phone'
+   lastShape = result.shape || ''
+   lastAt = result.payload.savedAt
++  // 归一化成功即回 ACK（无论数据是否重复）：手机端按收到的 sentAt 匹配确认
++  if (connect) {
++    connect.send({
++      data: {
++        protocol: PROTOCOL,
++        version: PROTOCOL_VERSION,
++        action: ACTION.ACK,
++        rev: rev,
++        sentAt: result.payload.sentAt || Date.now()
++      },
++      success: function () {},
++      fail: function (d, c) {
++        console.log('[sync] ack fail', c)
++      }
++    })
++  }
+   applyPayload(result.payload)
++  lastInboundAt = Date.now()
+   persist(result.payload, function () {
+     if (rev === appliedRev) notify()
+   })
+@@ -777,6 +798,12 @@ function bindConnect() {
+     console.log('[sync] interconnect closed', lastError)
+     // 手机断连后停止轮询，避免无效空转；重连时恢复
+     stopPolling()
++    // 通道已断：清掉挂起的重试链，避免旧定时器在重连后误触发
++    if (retryTimer) {
++      clearTimeout(retryTimer)
++      retryTimer = null
++    }
++    retryCount = 0
+   }
+   connect.onerror = function (data) {
+     ready = false
+@@ -784,6 +811,12 @@ function bindConnect() {
+     lastError = (data && (data.data || data.code)) || 'error'
+     console.log('[sync] interconnect error', lastError)
+     stopPolling()
++    // 通道出错：同样清掉挂起的重试链并归零计数
++    if (retryTimer) {
++      clearTimeout(retryTimer)
++      retryTimer = null
++    }
++    retryCount = 0
+   }
+ }
+ 
+@@ -887,6 +920,8 @@ function ensureFresh(reason) {
+  * 有缓存时即使手机不在身边，页面也能显示上次同步的课表。
+  */
+ function init() {
++  // 入站静默看门狗：尽早启动，用于识别「假活」通道（重复 init 不会重复起定时器）
++  startWatchdog()
+   // 缓存必须先读：冷启动时不依赖任何连接状态
+   try {
+     storage.get({
+@@ -958,8 +993,28 @@ function stopPolling() {
+   }
+ }
+ 
++/**
++ * 入站静默看门狗：通道标记就绪后，若曾经收到过数据却超过 60s 没有任何新数据进来，
++ * 说明连接「假活」（onopen 触发但消息通道实际已断）。此时置就绪为假并重新请求一次。
++ * 只在 lastInboundAt>0（曾有数据）时才判断，不误杀刚连上还没收到数据的正常通道。
++ */
++function startWatchdog() {
++  if (watchdogTimer) return
++  watchdogTimer = setInterval(function () {
++    if (!ready || !lastInboundAt) return
++    if (Date.now() - lastInboundAt <= 60000) return
++    console.log('[sync] inbound silent >60s, watchdog re-request')
++    ready = false
++    requestSync('watchdog')
++  }, 60000)
++}
++
+ function teardown() {
+   stopPolling()
++  if (watchdogTimer) {
++    clearInterval(watchdogTimer)
++    watchdogTimer = null
++  }
+   if (retryTimer) {
+     clearTimeout(retryTimer)
+     retryTimer = null

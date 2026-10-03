@@ -1,0 +1,82 @@
+diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
+index e7c72a8..08af473 100644
+--- a/src/pages/index/index.ux
++++ b/src/pages/index/index.ux
+@@ -26,17 +26,17 @@
+         </div>
+ 
+         <block for="{{(groupIndex, group) in day.groups}}">
+-          <div class="tag-wrap">
+-            <text class="tag">{{group.label}}</text>
+-          </div>
+-          <div class="card" for="{{(courseIndex, course) in group.courses}}">
+-            <div class="row">
+-              <text class="strong">{{course.name}}</text>
+-              <text class="blue">{{course.timeText}}</text>
+-            </div>
+-            <div class="row">
+-              <text class="meta">{{course.meta}}</text>
+-              <text class="meta">{{course.status}}</text>
++          <div class="group-card">
++            <text class="group-tag">{{group.label}}</text>
++            <div class="course-row" for="{{(courseIndex, course) in group.courses}}">
++              <div class="row">
++                <text class="strong">{{course.name}}</text>
++                <text class="blue">{{course.timeText}}</text>
++              </div>
++              <div class="row">
++                <text class="meta">{{course.meta}}</text>
++                <text class="meta">{{course.status}}</text>
++              </div>
+             </div>
+           </div>
+         </block>
+@@ -603,23 +603,37 @@ export default {
+     lines: -1;
+   }
+ 
+-  .tag-wrap {
++  /* 组块：同一时段（上午/下午/晚上）的课程合并成一个圆角矩形块，
++     组内课程上下排列、共享背景，组与组之间留间距；组标题放在块内顶部。
++     视觉与原 .card 统一：同底色 #242424、同圆角 19px、同下边距 13px。 */
++  .group-card {
+     width: 100%;
+-    flex-direction: row;
+-    margin-top: 5px;
+-    margin-bottom: 10px;
++    flex-direction: column;
++    padding-top: 12px;
++    padding-right: 15px;
++    padding-bottom: 12px;
++    padding-left: 15px;
++    background-color: #242424;
++    border-radius: 19px;
++    margin-bottom: 13px;
++    overflow: visible;
+   }
+ 
+-  .tag {
++  /* 块内组标题：沿用原 .tag 的字号/颜色，去掉胶囊底，与块背景融为一体 */
++  .group-tag {
+     font-size: 18px;
+     font-weight: bold;
+     color: #d1d1d6;
+-    background-color: #242424;
+-    border-radius: 10px;
+-    padding-top: 4px;
+-    padding-right: 13px;
+-    padding-bottom: 4px;
+-    padding-left: 13px;
++    margin-left: 3px;
++    margin-bottom: 4px;
++  }
++
++  /* 组内课程行：不再各自独立圆角卡片，行内仍用 row/strong/blue/meta；
++     靠上下留白区分课程，不加分隔线、不加动画 */
++  .course-row {
++    width: 100%;
++    flex-direction: column;
++    padding-top: 12px;
+   }
+ 
+   /* 仅增加可滚高度以触发回弹，不改变关于页内部布局（514 屏 = 屏高 + 140） */

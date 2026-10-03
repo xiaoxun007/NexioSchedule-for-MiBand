@@ -1,0 +1,413 @@
+diff --git a/src/common/sync.js b/src/common/sync.js
+index 4e5549e..4d3a32a 100644
+--- a/src/common/sync.js
++++ b/src/common/sync.js
+@@ -38,13 +38,11 @@
+  * 不会出现「周一~周六整体错位一天」。version 只用于日志诊断。
+  * holidays[].followWeekday 为手机域 1-7（1=周一 .. 7=周日），0 与 7 都按周日容错处理。
+  *
+- * 手表端主动要数据（**手动接口**，正常被动模式下不发送；手机端
+- * WearableScheduleSync 收到 request 就整包推送，它只校验 protocol / action）：
+- * { "protocol": "nexio.schedule", "version": 2, "action": "request", "reason": "app-open" }
+- *
+- * 读取频率：**轮询 + 事件触发**拉取 —— 启动、onShow（数据过期/通道未就绪）、
+- * 通道重连、缺按日期数据时立即拉取，另有每 POLL_INTERVAL_MS 一次的定时轮询兜底；
+- * 手机端点「推送到手环」仍是主要数据入口（轮询拉回的也是同一个整表包）。
++ * 纯被动接收模式：手表端不再主动向手机 request / 重试 / 轮询 / 看门狗拉取，
++ * 只监听手机端主动推送（手机端点「推送到手环」或课表变更自动下发）。
++ * 手表端收到并归一化成功后回一个 ACK（把手机带来的 sentAt 原样回传），
++ * 手机端 WearableScheduleSync 按 sentAt 匹配确认，无需手表再发 action=request。
++ * 连接就绪时仍保留上游「已连接手机」toast（连接状态提示，不触发任何拉取）。
+  *
+  * 注意：interconnect 要求手表 rpk 与手机 App 包名、签名一致。
+  */
+@@ -86,34 +84,11 @@ let lastError = null
+ let cachedQuote = ''
+ /** 已应用的最新同步序号 */
+ let appliedRev = 0
+-/** 主动请求同步的最小间隔，避免 onShow/重试把通道刷爆 */
+-const REQUEST_MIN_GAP_MS = 15000
+-/** 手动 requestSync 后多久没收到数据就重试，以及最多重试几次（仅手动路径使用） */
+-const RETRY_DELAY_MS = 4000
+-const MAX_RETRY = 2
+-/** 本地数据超过这个时间就认为过期，页面 onShow 时主动向手机要一次 */
+-const STALE_MS = 5 * 60 * 1000
+-/** 「按日期直推」数据的请求节流（v2/v3 用户兜底补数据用） */
+-const NEED_DATED_MIN_GAP_MS = 60000
+-/** 定时轮询间隔：整表包不大，5 分钟一次足以自愈，又不会明显耗电 */
+-const POLL_INTERVAL_MS = 5 * 60 * 1000
+ 
+-/** 本地缓存时间戳（0 表示当前进程还没有可用缓存） */
+-let cachedAt = 0
+ /** 同步诊断（关于页「同步诊断」展示）：最近一次数据的来源、形态、时间 */
+ let lastSource = ''
+ let lastShape = ''
+ let lastAt = 0
+-/** 请求节流 / 重试状态 */
+-let lastRequestAt = 0
+-let retryTimer = null
+-let retryCount = 0
+-/** 最近一次成功收到并应用手机数据的时间（0 = 从未收到），入站静默看门狗用 */
+-let lastInboundAt = 0
+-/** 入站静默看门狗定时器句柄 */
+-let watchdogTimer = null
+-/** 定时轮询句柄 */
+-let pollTimer = null
+ /** 本次连接是否已弹过「已连接手机」toast（断开后重置，重连才再弹） */
+ let connectNotified = false
+ 
+@@ -139,9 +114,6 @@ function notifyConnected() {
+     }
+   }
+ }
+-/** 缺「按日期直推」数据的请求节流与次数（诊断用） */
+-let lastNeedDatedAt = 0
+-let needDatedCount = 0
+ 
+ function notify() {
+   for (let i = 0; i < listeners.length; i++) {
+@@ -664,7 +636,6 @@ function persist(payload, done) {
+       key: STORAGE_KEY,
+       value: value,
+       success: function () {
+-        cachedAt = payload.savedAt || Date.now()
+         if (done) done(null)
+       },
+       fail: function (data, code) {
+@@ -764,7 +735,6 @@ function handlePhoneMessage(raw) {
+     })
+   }
+   applyPayload(result.payload)
+-  lastInboundAt = Date.now()
+   persist(result.payload, function () {
+     if (rev === appliedRev) notify()
+   })
+@@ -787,141 +757,33 @@ function bindConnect() {
+     ready = true
+     lastError = null
+     console.log('[sync] interconnect open, reconnected=', data && data.isReconnected)
++    // 保留上游连接 toast（连接状态提示，与被动模式不冲突）；
++    // 纯被动：连上后不主动 request、不轮询，只通知 UI 刷新连接态
+     notifyConnected()
+-    requestSync('reconnect')
+-    startPolling()
++    notify()
+   }
+   connect.onclose = function (data) {
+     ready = false
+     connectNotified = false
+     lastError = (data && data.data) || 'closed'
+     console.log('[sync] interconnect closed', lastError)
+-    // 手机断连后停止轮询，避免无效空转；重连时恢复
+-    stopPolling()
+-    // 通道已断：清掉挂起的重试链，避免旧定时器在重连后误触发
+-    if (retryTimer) {
+-      clearTimeout(retryTimer)
+-      retryTimer = null
+-    }
+-    retryCount = 0
++    notify()
+   }
+   connect.onerror = function (data) {
+     ready = false
+     connectNotified = false
+     lastError = (data && (data.data || data.code)) || 'error'
+     console.log('[sync] interconnect error', lastError)
+-    stopPolling()
+-    // 通道出错：同样清掉挂起的重试链并归零计数
+-    if (retryTimer) {
+-      clearTimeout(retryTimer)
+-      retryTimer = null
+-    }
+-    retryCount = 0
+-  }
+-}
+-
+-/**
+- * 向手机端请求最新课表（**手动接口**，正常流程不调用）。
+- * 手环是纯被动接收端：只有手机端用户点「推送到手环」（或手机端课表变更自动推送）
+- * 才会有数据下来。保留此函数供将来加「手动刷新」入口使用；
+- * 手机端 WearableScheduleSync 收到 action=request 会立刻整包推送，带节流 + 重试。
+- */
+-function requestSync(reason, force) {
+-  if (!connect) return
+-  const now = Date.now()
+-  if (!force && now - lastRequestAt < REQUEST_MIN_GAP_MS) {
+-    console.log('[sync] request throttled (' + (reason || 'manual') + ')')
+-    return
+-  }
+-  lastRequestAt = now
+-  const body = {
+-    protocol: PROTOCOL,
+-    version: PROTOCOL_VERSION,
+-    action: ACTION.REQUEST,
+-    reason: reason || 'manual',
+-    sentAt: now
++    notify()
+   }
+-  connect.send({
+-    data: body,
+-    success: function () {
+-      console.log('[sync] request sent (' + body.reason + ')')
+-      scheduleRetry()
+-    },
+-    fail: function (data, code) {
+-      lastError = 'request fail ' + code
+-      console.log('[sync] request fail', lastError)
+-      scheduleRetry()
+-    }
+-  })
+-}
+-
+-/** 请求发出后若迟迟没有新数据，最多重试 MAX_RETRY 次 */
+-function scheduleRetry() {
+-  if (retryTimer) return
+-  const revAtRequest = appliedRev
+-  retryTimer = setTimeout(function () {
+-    retryTimer = null
+-    if (appliedRev !== revAtRequest) {
+-      retryCount = 0
+-      return
+-    }
+-    if (retryCount >= MAX_RETRY) {
+-      console.log('[sync] retry give up, 手机端没回应')
+-      retryCount = 0
+-      return
+-    }
+-    retryCount += 1
+-    requestSync('retry' + retryCount, true)
+-  }, RETRY_DELAY_MS)
+-}
+-
+-/**
+- * 主动要一次「按日期直推」数据（v2/v3 用户的兜底补数据；v4 整表模式下
+- * hasFullSemester 为真，调用方会自动跳过）。带节流避免把通道刷爆。
+- * @returns {boolean} 是否真的发出了请求
+- */
+-function requestDatedData(reason) {
+-  if (!connect) return false
+-  const now = Date.now()
+-  if (now - lastNeedDatedAt < NEED_DATED_MIN_GAP_MS) return false
+-  lastNeedDatedAt = now
+-  needDatedCount += 1
+-  console.log('[sync] 缺少按日期数据，向手机请求 (' + (reason || 'need-dates') + ')')
+-  requestSync(reason || 'need-dates', true)
+-  return true
+-}
+-
+-/**
+- * 页面 onShow 调用：数据过期（或从未同步过）就主动向手机要一次。
+- * 打开应用/从表盘回到应用时不再被动等推送；v2 用户缺按日期数据时也会催一次。
+- */
+-function ensureFresh(reason) {
+-  const tag = reason || 'ensure-fresh'
+-  let askedForDates = false
+-  // 整表模式（含学期起始日）下手环能推算学期内任意一天，不必再向手机要按日期数据
+-  if (!schedule.hasDateFor(new Date()) && !schedule.hasFullSemester()) {
+-    askedForDates = requestDatedData(tag)
+-  }
+-  if (!lastAt || Date.now() - lastAt > STALE_MS) {
+-    retryCount = 0
+-    requestSync(tag, true)
+-    return true
+-  }
+-  // 数据还新，但通道没连上时也试一次（可能刚开机/刚重连）
+-  if (!ready && !schedule.hasFullSemester()) {
+-    requestSync(tag)
+-    return true
+-  }
+-  return askedForDates
+ }
+ 
+ /**
+  * 启动同步通道：先恢复本地缓存，再监听手机消息
+  * 有缓存时即使手机不在身边，页面也能显示上次同步的课表。
++ * 纯被动模式：这里只做「读缓存 + 绑定消息监听 + 探明就绪态」，不主动发任何 request。
+  */
+ function init() {
+-  // 入站静默看门狗：尽早启动，用于识别「假活」通道（重复 init 不会重复起定时器）
+-  startWatchdog()
+   // 缓存必须先读：冷启动时不依赖任何连接状态
+   try {
+     storage.get({
+@@ -937,13 +799,13 @@ function init() {
+           console.log('[sync] cache rejected:', result.error)
+           return
+         }
+-        cachedAt = result.payload.savedAt || 0
++        const restoredAt = result.payload.savedAt || 0
+         lastSource = 'cache'
+         lastShape = result.shape || ''
+-        lastAt = cachedAt
++        lastAt = restoredAt
+         applyPayload(result.payload)
+         notify()
+-        console.log('[sync] cache restored, savedAt=' + cachedAt + ' ' + lastShape)
++        console.log('[sync] cache restored, savedAt=' + restoredAt + ' ' + lastShape)
+       },
+       fail: function (data, code) {
+         lastError = 'storage.get fail ' + code
+@@ -959,13 +821,13 @@ function init() {
+     bindConnect()
+     connect.getReadyState({
+       success: function (data) {
++        // 只记录就绪态用于诊断，纯被动不主动 request
+         ready = !!(data && data.status === 1)
+         if (ready) {
+-          // 应用启动时通道已就绪：onopen 可能不会再触发，这里直接提示
++          // 应用启动时通道已就绪：onopen 可能不会再触发，这里直接提示 + 刷新 UI
+           notifyConnected()
+-          requestSync('app-open')
+-          startPolling()
+         }
++        notify()
+       },
+       fail: function (data, code) {
+         lastError = 'getReadyState fail ' + code
+@@ -977,48 +839,7 @@ function init() {
+   }
+ }
+ 
+-/** 定时轮询：兜底自愈（手机端在身边时，错过的推送最迟一个周期被补上） */
+-function startPolling() {
+-  if (pollTimer) return
+-  pollTimer = setInterval(function () {
+-    // 手机不在身边时 request 会失败，重试机制会兜住；节流在 requestSync 内部
+-    requestSync('poll')
+-  }, POLL_INTERVAL_MS)
+-}
+-
+-function stopPolling() {
+-  if (pollTimer) {
+-    clearInterval(pollTimer)
+-    pollTimer = null
+-  }
+-}
+-
+-/**
+- * 入站静默看门狗：通道标记就绪后，若曾经收到过数据却超过 60s 没有任何新数据进来，
+- * 说明连接「假活」（onopen 触发但消息通道实际已断）。此时置就绪为假并重新请求一次。
+- * 只在 lastInboundAt>0（曾有数据）时才判断，不误杀刚连上还没收到数据的正常通道。
+- */
+-function startWatchdog() {
+-  if (watchdogTimer) return
+-  watchdogTimer = setInterval(function () {
+-    if (!ready || !lastInboundAt) return
+-    if (Date.now() - lastInboundAt <= 60000) return
+-    console.log('[sync] inbound silent >60s, watchdog re-request')
+-    ready = false
+-    requestSync('watchdog')
+-  }, 60000)
+-}
+-
+ function teardown() {
+-  stopPolling()
+-  if (watchdogTimer) {
+-    clearInterval(watchdogTimer)
+-    watchdogTimer = null
+-  }
+-  if (retryTimer) {
+-    clearTimeout(retryTimer)
+-    retryTimer = null
+-  }
+   if (connect) {
+     try {
+       connect.onmessage = null
+@@ -1069,8 +890,7 @@ function getStatus() {
+     peerPackage: PEER_PACKAGE,
+     protocol: PROTOCOL,
+     version: PROTOCOL_VERSION,
+-    cachedAt: cachedAt,
+-    hasCache: cachedAt > 0 || schedule.hasSyncedSchedule(),
++    hasCache: schedule.hasSyncedSchedule(),
+     rev: appliedRev,
+     lastSource: lastSource,
+     lastShape: lastShape,
+@@ -1093,8 +913,6 @@ export default {
+   PEER_PACKAGE: PEER_PACKAGE,
+   init: init,
+   teardown: teardown,
+-  requestSync: requestSync,
+-  ensureFresh: ensureFresh,
+   handlePhoneMessage: handlePhoneMessage,
+   normalizePayload: normalizePayload,
+   onScheduleChange: onScheduleChange,
+diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
+index 08af473..ff39755 100644
+--- a/src/pages/index/index.ux
++++ b/src/pages/index/index.ux
+@@ -188,15 +188,16 @@ export default {
+     this.probePlatform()
+     this.refreshHome()
+     this.refreshDiagnostics()
++    // 最小定时：只刷时间敏感字段（时钟/下节课倒计时/课程运行状态），
++    // 不重新拉数据、也不整页重建课表列表。
+     this._refreshTimer = setInterval(() => {
+-      this.refreshHome()
++      this.tickClock()
+     }, 60000)
+   },
+   onShow() {
+-    this.refreshHome()
++    // 纯被动模式：手表不主动向手机 request/重试，只刷新本地时钟/倒计时与诊断。
++    this.tickClock()
+     this.refreshDiagnostics()
+-    // 数据过期就主动向手机拉一次，别等手机那边点推送
+-    sync.ensureFresh('show')
+   },
+   onDestroy() {
+     if (this._refreshTimer) {
+@@ -238,11 +239,15 @@ export default {
+    */
+   refreshDiagnostics() {
+     const s = sync.getStatus()
+-    this.diagStatus = s.ready ? '已连接手机' : '手机未连接'
++    // 纯被动模式：!ready 或从未收到过数据（lastAt==0）→ 视为未连接手机
++    const unconnected = !s.ready || !s.lastAt
++    this.diagStatus = unconnected ? '未连接手机' : '已连接手机'
+     this.diagUpdated =
+       '最近一次本地更新时间：' + (s.lastAt ? util.formatClock(new Date(s.lastAt)) : '--:--')
+   },
+-  buildDay(vm, now) {
++  buildDay(vm, now, conn) {
++    // 纯被动：!ready 或从未收到数据（lastAt==0）→ 空态副文案默认「未连接手机」
++    const unconnected = !conn || !conn.ready || !conn.lastAt
+     return {
+       isToday: vm.isToday,
+       weekday: vm.isToday ? '今天是' + vm.weekday : vm.weekday,
+@@ -255,7 +260,7 @@ export default {
+       nextMeta: vm.nextCourse ? vm.nextCourse.meta : '',
+       groups: vm.groups,
+       showEmpty: !vm.hasCourses,
+-      showNeedPhone: vm.emptyState === 'need-phone',
++      showNeedPhone: vm.emptyState === 'need-phone' || unconnected,
+       emptyTitle:
+       vm.emptyState === 'need-phone'
+           ? '请连接手机'
+@@ -266,15 +271,24 @@ export default {
+             : vm.isToday
+               ? '今日无课'
+               : '这天没有课程',
+-      emptySub: '打开Nexio课程表发送数据'
++      emptySub: unconnected ? '未连接手机' : '打开Nexio课程表发送数据'
+     }
+   },
+   refreshHome() {
+     const now = new Date()
+     const viewDate = this.getViewDate()
+     const vm = schedule.buildHomeViewModel(viewDate, util, now)
++    const s = sync.getStatus()
+     // 单层常驻：只替换这一个对象的内容，既不改节点结构也不做动画
+-    this.day = this.buildDay(vm, now)
++    this.day = this.buildDay(vm, now, { ready: s.ready, lastAt: s.lastAt })
++  },
++  /** 时间敏感最小定时：只重算时钟 / 下节课倒计时 / 课程运行状态，不重查课表内容 */
++  tickClock() {
++    const now = new Date()
++    const viewDate = this.getViewDate()
++    const vm = schedule.buildHomeViewModel(viewDate, util, now)
++    const s = sync.getStatus()
++    this.day = this.buildDay(vm, now, { ready: s.ready, lastAt: s.lastAt })
+   },
+   /**
+    * 读平台版本（Vela）与 APILevel，仅用于关于页的「同步诊断」展示。
