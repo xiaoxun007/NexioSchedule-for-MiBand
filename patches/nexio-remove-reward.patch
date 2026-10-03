@@ -1,0 +1,149 @@
+diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
+index 8196a16..b778cd0 100644
+--- a/src/pages/index/index.ux
++++ b/src/pages/index/index.ux
+@@ -88,31 +88,9 @@
+           </div>
+         </div>
+       </div>
+-
+-      <!-- 打赏入口：放在关于页最后 -->
+-      <div class="card entry-card" onclick="onOpenReward">
+-        <div class="entry-row">
+-          <text class="entry-label">打赏支持</text>
+-          <text class="entry-hint">扫码支持</text>
+-        </div>
+-      </div>
+     </div>
+     </scroll>
+ 
+-    <!-- ============ 打赏 ============ -->
+-    <scroll class="body" scroll-y="true" bounces="true" if="{{isReward}}">
+-      <!-- 打赏页：向右侧滑返回关于页 -->
+-      <div class="screen-reward" onswipe="onRewardSwipe">
+-        <div class="reward-head">
+-          <text class="reward-title">感谢打赏！</text>
+-          <text class="reward-title">谢谢喵！</text>
+-        </div>
+-        <div class="reward-card">
+-          <image class="reward-qr" src="/common/reward_qr.png"></image>
+-        </div>
+-      </div>
+-    </scroll>
+-
+     <div class="sys-back-edge" if="{{isHome}}"></div>
+     </div>
+     </stack>
+@@ -167,8 +145,7 @@ export default {
+   private: {
+     isHome: true,
+     isAbout: false,
+-    isReward: false,
+-    /* 打赏页也算「关于」这一支：底部 Tab 保持高亮 */
++    /* 关于页时底部 Tab 保持「关于」高亮 */
+     aboutActive: false,
+     /* 当前展示的那一天（单层常驻，切日只换这个对象） */
+     day: {},
+@@ -403,30 +380,13 @@ export default {
+   onTabHome() {
+     this.isHome = true
+     this.isAbout = false
+-    this.isReward = false
+     this.aboutActive = false
+     this.refreshHome()
+   },
+   onTabAbout() {
+     this.isHome = false
+     this.isAbout = true
+-    this.isReward = false
+     this.aboutActive = true
+-  },
+-  /** 关于页 → 打赏页 */
+-  onOpenReward() {
+-    this.isHome = false
+-    this.isAbout = false
+-    this.isReward = true
+-    this.aboutActive = true
+-  },
+-  /** 打赏页向右侧滑返回关于页 */
+-  onRewardSwipe(e) {
+-    if (e && e.direction === 'right') {
+-      this.isReward = false
+-      this.isAbout = true
+-      this.aboutActive = true
+-    }
+   }
+ }
+ </script>
+@@ -901,71 +861,4 @@ export default {
+     text-align: center;
+     lines: 1;
+   }
+-
+-  /* ---------------- 关于页：打赏入口 ---------------- */
+-  .entry-row {
+-    width: 100%;
+-    flex-direction: row;
+-    justify-content: space-between;
+-    align-items: center;
+-  }
+-
+-  .entry-label {
+-    font-size: 24px;
+-    font-weight: bold;
+-    color: #ffffff;
+-    lines: 1;
+-  }
+-
+-  .entry-hint {
+-    font-size: 17px;
+-    font-weight: bold;
+-    color: #3381FF;
+-    lines: 1;
+-  }
+-
+-  /* ---------------- 打赏页 ----------------
+-     标题两行居中，白卡片放收款码（素材 232x252，按 248x270 放，保持原比例）。
+-     卡片底边约 405，留在悬浮 Tab（顶部约 412）之上，不会被压住。 */
+-  .screen-reward {
+-    width: 100%;
+-    min-height: 554px;
+-    flex-direction: column;
+-    align-items: center;
+-    padding-bottom: 118px;
+-  }
+-
+-  .reward-head {
+-    width: 100%;
+-    padding-top: 39px;
+-    flex-direction: column;
+-    align-items: center;
+-  }
+-
+-  .reward-title {
+-    height: 40px;
+-    font-size: 36px;
+-    font-weight: bold;
+-    color: #ffffff;
+-    text-align: center;
+-    lines: 1;
+-  }
+-
+-  .reward-card {
+-    width: 248px;
+-    height: 270px;
+-    margin-top: 16px;
+-    background-color: #ffffff;
+-    border-radius: 14px;
+-    overflow: hidden;
+-    flex-direction: column;
+-    justify-content: center;
+-    align-items: center;
+-  }
+-
+-  .reward-qr {
+-    width: 248px;
+-    height: 270px;
+-    flex-shrink: 0;
+-  }
+ </style>

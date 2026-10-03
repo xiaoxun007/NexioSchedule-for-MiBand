@@ -1,0 +1,94 @@
+diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
+index b778cd0..df22070 100644
+--- a/src/pages/index/index.ux
++++ b/src/pages/index/index.ux
+@@ -137,9 +137,9 @@ import app from '@system.app'
+ const EDGE_W = 15
+ 
+ /** 手势分区阈值：起手 y >= 此值算作「下部 Tab 区」（左右滑切日期），否则为「上部日期区」
+- * （右滑退出应用 / 左滑进关于页）。下移后 .tab-bar 顶部约 y=430，向上留约 15px 缓冲，
+- * 避免紧贴 Tab 上缘的滑动被误判为退出。 */
+-const LOWER_ZONE_Y = 415
++ * （右滑退出应用 / 左滑进关于页）。紧凑化后 .tab-bar 高 58、bottom:14 → 顶部约 y=442，
++ * 向上留约 15px 缓冲（=427），避免紧贴 Tab 上缘的滑动被误判为退出。 */
++const LOWER_ZONE_Y = 427
+ 
+ export default {
+   private: {
+@@ -753,17 +753,17 @@ export default {
+     margin-left: 6px;
+   }
+ 
+-  /* 悬浮 Tab：原样紧凑胶囊，按新屏宽/屏高等比重推，不横向拉伸。
+-     下移到 bottom:14（原 32），少量下沉、明显可感知，不遮挡课程内容。 */
++  /* 悬浮 Tab：紧凑化——容器背景收窄/变矮/小圆角，图标(52)本身不变。
++     bottom 保持贴底 14；.tab-btn 仍 70 高（透明溢出 pill 之外，点击热区不减）。 */
+   .tab-bar {
+     position: absolute;
+-    left: 122px;
+-    right: 122px;
++    left: 132px;
++    right: 132px;
+     bottom: 14px;
+-    height: 70px;
++    height: 58px;
+     flex-direction: row;
+     background-color: #282828;
+-    border-radius: 48px;
++    border-radius: 36px;
+     align-items: center;
+     overflow: visible;
+     box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.18);
+@@ -779,24 +779,24 @@ export default {
+     overflow: visible;
+   }
+ 
+-  /* 固定插槽，避免选中态被压成圆点 */
++  /* 固定插槽，避免选中态被压成圆点（紧凑化后收窄到 72×56，图标 52 居中） */
+   .tab-slot {
+-    width: 84px;
+-    height: 59px;
++    width: 72px;
++    height: 56px;
+     margin-top: -1px;
+     overflow: visible;
+   }
+ 
+   /* 选中：比外框小一圈的嵌套胶囊 */
+   .tab-hl {
+-    width: 84px;
+-    height: 59px;
+-    min-width: 84px;
+-    min-height: 59px;
++    width: 72px;
++    height: 56px;
++    min-width: 72px;
++    min-height: 56px;
+     position: absolute;
+     left: 0px;
+     top: 0px;
+-    border-radius: 48px;
++    border-radius: 36px;
+     background-color: #353535;
+     flex-direction: column;
+     justify-content: center;
+@@ -806,14 +806,14 @@ export default {
+ 
+   /* 未选中：同尺寸透明占位，避免图标跳动 */
+   .tab-hl-off {
+-    width: 84px;
+-    height: 59px;
+-    min-width: 84px;
+-    min-height: 59px;
++    width: 72px;
++    height: 56px;
++    min-width: 72px;
++    min-height: 56px;
+     position: absolute;
+     left: 0px;
+     top: 0px;
+-    border-radius: 48px;
++    border-radius: 36px;
+     flex-direction: column;
+     justify-content: center;
+     align-items: center;

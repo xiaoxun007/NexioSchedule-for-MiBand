@@ -1,0 +1,94 @@
+diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
+index ff39755..8196a16 100644
+--- a/src/pages/index/index.ux
++++ b/src/pages/index/index.ux
+@@ -51,7 +51,7 @@
+     </scroll>
+ 
+     <scroll class="body" scroll-y="true" bounces="true" if="{{isAbout}}">
+-    <div class="screen screen-about">
++    <div class="screen screen-about" onswipe="onAboutSwipe" ontouchstart="onTouchStart">
+       <text class="page-title">应用信息</text>
+ 
+       <div class="card">
+@@ -153,10 +153,16 @@ import sync from '../../common/sync'
+ import schedule from '../../common/schedule'
+ import util from '../../common/util'
+ import device from '@system.device'
++import app from '@system.app'
+ 
+ /** 左缘留给系统「右滑回桌面」的宽度，与 .sys-back-edge 保持一致（432 宽屏按屏宽比例放大） */
+ const EDGE_W = 15
+ 
++/** 手势分区阈值：起手 y >= 此值算作「下部 Tab 区」（左右滑切日期），否则为「上部日期区」
++ * （右滑退出应用 / 左滑进关于页）。下移后 .tab-bar 顶部约 y=430，向上留约 15px 缓冲，
++ * 避免紧贴 Tab 上缘的滑动被误判为退出。 */
++const LOWER_ZONE_Y = 415
++
+ export default {
+   private: {
+     isHome: true,
+@@ -350,6 +356,8 @@ export default {
+     const p = this.touchXY(t)
+     // 左缘起手不切日，留给系统「右滑回桌面」
+     this._touchFromEdge = !!(p && p.x <= EDGE_W)
++    // 记录起手 y，用于判定上部/下部手势区
++    this._touchStartY = p ? p.y : -1
+     // 同一手势只允许触发一次切日（出入场双层都会挂 handler）
+     this._gestureSwiped = false
+   },
+@@ -362,10 +370,34 @@ export default {
+     if (this._gestureSwiped) return
+     this._gestureSwiped = true
+     const dir = e && e.direction
+-    if (dir === 'left') {
+-      this.goDay(1)
+-    } else if (dir === 'right') {
+-      this.goDay(-1)
++    const y = this._touchStartY != null ? this._touchStartY : -1
++    if (y >= LOWER_ZONE_Y) {
++      // 下部 Tab 区：左右滑切日期（保留 goDay）
++      if (dir === 'left') {
++        this.goDay(1)
++      } else if (dir === 'right') {
++        this.goDay(-1)
++      }
++    } else {
++      // 上部日期区：右滑退出应用，左滑切到关于页
++      if (dir === 'right') {
++        app.terminate()
++      } else if (dir === 'left') {
++        this.onTabAbout()
++      }
++    }
++  },
++  /** 关于页手势：右滑回首页；左滑无动作（打赏已去，无更深层级）。
++   *  左缘起手同样让位给系统返回手势。 */
++  onAboutSwipe(e) {
++    if (this._touchFromEdge) {
++      this._touchFromEdge = false
++      return
++    }
++    if (this._gestureSwiped) return
++    this._gestureSwiped = true
++    if (e && e.direction === 'right') {
++      this.onTabHome()
+     }
+   },
+   onTabHome() {
+@@ -761,12 +793,13 @@ export default {
+     margin-left: 6px;
+   }
+ 
+-  /* 悬浮 Tab：原样紧凑胶囊，按新屏宽/屏高等比重推，不横向拉伸 */
++  /* 悬浮 Tab：原样紧凑胶囊，按新屏宽/屏高等比重推，不横向拉伸。
++     下移到 bottom:14（原 32），少量下沉、明显可感知，不遮挡课程内容。 */
+   .tab-bar {
+     position: absolute;
+     left: 122px;
+     right: 122px;
+-    bottom: 32px;
++    bottom: 14px;
+     height: 70px;
+     flex-direction: row;
+     background-color: #282828;

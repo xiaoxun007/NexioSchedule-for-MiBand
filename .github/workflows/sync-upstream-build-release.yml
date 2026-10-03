@@ -1,0 +1,233 @@
+# 同步上游并构建 Release RPK（Redmi Watch 6 适配 fork）
+#
+# 功能：
+# 1. 每小时检查上游 Alittlejelly/NexioSchedule-for-MiBand (main) 是否有新提交
+# 2. 有更新时：把 fork main 对齐上游最新，并重新应用定制补丁层（rw6 适配 + sync 稳定性）
+# 3. 在 build-snapshot 上干净重放补丁 → 注入版本号 → 用本 fork 调试证书签名 → npx aiot build
+# 4. 上传 .rpk 构建产物 + 发布 GitHub Release
+#
+# 首次部署后请在 Actions 页面手动 Run workflow 一次，生成第一个 RPK。
+#
+# 注意：本仓库 .gitignore 忽略了 .github/，首次提交本文件必须 force-add：
+#   git add -f .github/workflows/sync-upstream-build-release.yml
+#
+# 签名密钥：本 fork 的 sign/debug/{certificate.pem,private.pem} 与手机端 debug keystore 同证书
+# （XMS 互联互通要求包名 com.haooz.chedule + 同证书签名）。sign/ 被 .gitignore 排除，
+# 改为把两个 pem 的 base64 入库到 signing/ 目录（参照手机端 debug.keystore.b64 先例）。
+# 一次性生成命令（本地执行，不要把 .pem 本身提交）：
+#   base64 -w0 sign/debug/certificate.pem > signing/debug-certificate.pem.b64
+#   base64 -w0 sign/debug/private.pem      > signing/debug-private.pem.b64
+#   git add signing/*.b64 && git commit -m "chore: add rpk debug signing material (base64)"
+
+name: 同步上游并构建 Release RPK
+
+"on":
+  schedule:
+    - cron: '0 * * * *'          # 每小时检查上游是否有新提交
+  workflow_dispatch: {}          # 支持手动触发
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    env:
+      # 旧版 hap-toolkit/webpack 在新版 Node 上用 md4 hash，需 openssl-legacy-provider
+      NODE_OPTIONS: --openssl-legacy-provider
+    steps:
+      - name: 检出仓库（含完整历史）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 配置 git 并拉取上游
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Alittlejelly/NexioSchedule-for-MiBand.git
+          git fetch upstream main
+
+      - name: 判断上游是否有新提交
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            echo "✅ 当前已是最新上游"
+          else
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "upstream_sha=$(git rev-parse --short upstream/main)" >> "$GITHUB_OUTPUT"
+            echo "🔄 检测到上游新提交 $(git rev-parse --short upstream/main)"
+          fi
+
+      - name: 同步 fork main 到上游最新（保留补丁/签名/文档）
+        if: steps.check.outputs.has_update == 'true'
+        run: |
+          # 先保存 fork 特有文件，reset 对齐上游后再恢复
+          mkdir -p /tmp/keep
+          cp -r patches signing /tmp/keep/ 2>/dev/null || true
+          cp .github/workflows/sync-upstream-build-release.yml /tmp/keep/ 2>/dev/null || true
+          cp README.md CHANGELOG.md /tmp/keep/ 2>/dev/null || true
+          # fork main 完全对齐上游（force reset），避免 merge 冲突
+          git reset --hard upstream/main
+          # 恢复 fork 特有文件并提交
+          mkdir -p patches signing .github/workflows
+          cp -r /tmp/keep/patches/* patches/ 2>/dev/null || true
+          cp -r /tmp/keep/signing/* signing/ 2>/dev/null || true
+          cp /tmp/keep/sync-upstream-build-release.yml .github/workflows/ 2>/dev/null || true
+          cp /tmp/keep/README.md ./README.md 2>/dev/null || true
+          cp /tmp/keep/CHANGELOG.md ./CHANGELOG.md 2>/dev/null || true
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "sync: 对齐上游 $(git rev-parse --short upstream/main) 并保留补丁/签名/文档" --no-verify || true
+          # fork main = 上游最新 + 特有文件，历史由本 workflow 全权管理，force push 覆盖旧提交
+          git push --force origin main
+
+      - name: 从上游最新构建（干净重放定制补丁）
+        id: prep
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          # 在 build-snapshot 上基于干净上游 main 构建；补丁/签名从 fork main 取出
+          git checkout -B build-snapshot upstream/main
+          mkdir -p /tmp/patches
+          git show main:patches/nexio-rw6-adapt.patch      > /tmp/patches/nexio-rw6-adapt.patch
+          git show main:patches/nexio-sync-stability.patch > /tmp/patches/nexio-sync-stability.patch
+          git show main:patches/nexio-group-card.patch     > /tmp/patches/nexio-group-card.patch
+          git show main:patches/nexio-passive-mode.patch   > /tmp/patches/nexio-passive-mode.patch
+          git show main:patches/nexio-gesture-nav.patch    > /tmp/patches/nexio-gesture-nav.patch
+          git show main:patches/nexio-remove-reward.patch  > /tmp/patches/nexio-remove-reward.patch
+          git show main:patches/nexio-tab-compact.patch    > /tmp/patches/nexio-tab-compact.patch
+          # 切到上游后工作区没有 fork 专属的 signing/，需从 fork main 取回 b64（step 8 还原签名要用）
+          mkdir -p signing
+          git show main:signing/debug-certificate.pem.b64 > signing/debug-certificate.pem.b64
+          git show main:signing/debug-private.pem.b64     > signing/debug-private.pem.b64
+          # 七补丁按序重放：rw6 适配 → sync 稳定性 → group-card 组块化 → passive-mode 纯被动
+          # → gesture-nav 手势分区 → remove-reward 去打赏 → tab-compact tab紧凑化；
+          # --3way 失败时降级普通 apply
+          git apply --3way /tmp/patches/nexio-rw6-adapt.patch      || git apply /tmp/patches/nexio-rw6-adapt.patch
+          git apply --3way /tmp/patches/nexio-sync-stability.patch || git apply /tmp/patches/nexio-sync-stability.patch
+          git apply --3way /tmp/patches/nexio-group-card.patch     || git apply /tmp/patches/nexio-group-card.patch
+          git apply --3way /tmp/patches/nexio-passive-mode.patch   || git apply /tmp/patches/nexio-passive-mode.patch
+          git apply --3way /tmp/patches/nexio-gesture-nav.patch    || git apply /tmp/patches/nexio-gesture-nav.patch
+          git apply --3way /tmp/patches/nexio-remove-reward.patch  || git apply /tmp/patches/nexio-remove-reward.patch
+          git apply --3way /tmp/patches/nexio-tab-compact.patch    || git apply /tmp/patches/nexio-tab-compact.patch
+          git status --short
+
+      - name: 计算并注入 fork 版本号（防撞号 / 可覆盖安装）
+        id: ver
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 版本规则（与手机端完全一致）：
+          #   versionName = 上游 versionName + "-gh{n}"       （如 1.1.1-gh1）
+          #   versionCode = 上游 versionCode * 100 + n         （如 3101）
+          # n = 本上游版本下已发布的 gh release 数 + 1（按 tag 前缀 v{版本}-gh 匹配；
+          # 上游新版本发布后 tag 前缀变化，gh 计数自然从 1 重计）。
+          # 与上游 vc 错开（上游为个/十位数，fork 为 31xx），fork 间单调递增 → 可覆盖安装；
+          # 且随上游 vc 自增自动留出足够 headroom。当前本地手工版 vc33 << 3101，可直接覆盖升级。
+          UP_VNAME=$(python3 -c "import json;print(json.load(open('src/manifest.json'))['versionName'])")
+          UP_VC=$(python3 -c "import json;print(json.load(open('src/manifest.json'))['versionCode'])")
+          GH_N=$(gh release list --repo xiaoxun007/NexioSchedule-for-MiBand --limit 200 2>/dev/null \
+                 | grep -c "^v${UP_VNAME}-gh" || true)
+          GH_N=$((GH_N + 1))
+          FORK_VNAME="${UP_VNAME}-gh${GH_N}"
+          FORK_VC=$(( UP_VC * 100 + GH_N ))
+          # 同时写 manifest.json 与 rpk_info.json（上游 rpk_info 长期停留在 1.0.0/vc21，不可信，一律覆盖）
+          python3 - "$FORK_VNAME" "$FORK_VC" <<'PYEOF'
+          import json, sys
+          vname, vcode = sys.argv[1], int(sys.argv[2])
+          for p in ('src/manifest.json', 'src/rpk_info.json'):
+              d = json.load(open(p))
+              d['versionName'] = vname
+              d['versionCode'] = vcode
+              json.dump(d, open(p, 'w'), ensure_ascii=False, indent=2)
+              open(p, 'a').write('\n')
+          print(f'injected {vname} / {vcode}')
+          PYEOF
+          echo "UP_VNAME=$UP_VNAME" >> "$GITHUB_OUTPUT"
+          echo "UP_VC=$UP_VC" >> "$GITHUB_OUTPUT"
+          echo "GH_N=$GH_N" >> "$GITHUB_OUTPUT"
+          echo "FORK_VNAME=$FORK_VNAME" >> "$GITHUB_OUTPUT"
+          echo "FORK_VC=$FORK_VC" >> "$GITHUB_OUTPUT"
+          echo "构建 fork 版本: ${FORK_VNAME} (versionCode=${FORK_VC})"
+          grep -E 'versionName|versionCode' src/manifest.json src/rpk_info.json
+
+      - name: 还原签名证书（base64 → sign/debug）
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p sign/debug
+          base64 -d signing/debug-certificate.pem.b64 > sign/debug/certificate.pem
+          base64 -d signing/debug-private.pem.b64   > sign/debug/private.pem
+          chmod 600 sign/debug/*.pem
+          # npx aiot build 会自动用 sign/debug 对 rpk 签名
+          ls -l sign/debug/
+
+      - name: 安装系统依赖（zip/unzip，hap-toolkit 打包需要）
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        run: sudo apt-get install -y zip unzip || true
+
+      - name: 安装 Node 依赖并构建 rpk
+        id: build
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          node -v && npm -v
+          # package-lock.json 由上游跟踪入库，npm ci 可直接复现锁定依赖
+          npm ci
+          npx aiot build
+          echo "=== dist 产物 ===" && ls -l dist/
+          # 重命名为规范资产名：NexioSchedule-rw6-v{上游版本}-gh{n}.rpk
+          RPK=$(ls dist/*.rpk | head -1)
+          [ -z "$RPK" ] && { echo "❌ 未找到 rpk 产物"; exit 1; }
+          ASSET="NexioSchedule-rw6-v${{ steps.ver.outputs.UP_VNAME }}-gh${{ steps.ver.outputs.GH_N }}.rpk"
+          cp "$RPK" "dist/$ASSET"
+          echo "ASSET=$ASSET" >> "$GITHUB_OUTPUT"
+          ls -l "dist/$ASSET"
+
+      - name: 上传 rpk 构建产物
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexioSchedule-rw6-rpk
+          path: dist/NexioSchedule-rw6-*.rpk
+
+      - name: 发布 GitHub Release
+        if: steps.check.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.ver.outputs.UP_VNAME }}-gh${{ steps.ver.outputs.GH_N }}"
+          UPSTREAM_SHORT=$(git rev-parse --short upstream/main)
+          UPSTREAM_LOG=$(git log upstream/main --oneline --no-merges -10 | sed 's/^/- /')
+          FORK_VER="${{ steps.ver.outputs.FORK_VNAME }}"
+          FORK_CODE="${{ steps.ver.outputs.FORK_VC }}"
+          ASSET="dist/NexioSchedule-rw6-v${{ steps.ver.outputs.UP_VNAME }}-gh${{ steps.ver.outputs.GH_N }}.rpk"
+          export TAG UPSTREAM_SHORT UPSTREAM_LOG FORK_VER FORK_CODE
+          python3 - <<'PYEOF' > /tmp/release_notes.md
+          import os, textwrap
+          notes = textwrap.dedent("""\
+              ### 📦 构建信息
+              - **上游基准**：Alittlejelly/NexioSchedule-for-MiBand@{0}
+              - **fork 版本**：`{1}`（versionCode `{2}`）
+              - **设备**：Redmi Watch 6（432×514，designWidth=432）
+              - **签名**：本 fork 调试证书（与手机端 debug keystore 同证书，XMS 互连可用）
+
+              ### 🔄 上游最近变更
+              {3}
+
+              ### 🧩 本 fork 定制补丁（自动重放）
+              1. **nexio-rw6-adapt.patch**：index.ux 按 432×514 重推全部硬编码尺寸/字号/圆角；4 枚定制 PNG 图标；manifest designWidth 336→432。
+              2. **nexio-sync-stability.patch**：入站 ACK 回包、断线/出错清重试链、60s 入站静默看门狗识别「假活」通道。
+
+              ### ⚠️ 安装注意
+              - 包名 `com.haooz.chedule` 与上游一致（XMS 互连要求）；fork 签名 = 手机端 debug 证书，同系列 `-gh` 可直接覆盖升级。
+          """).format(os.environ["UPSTREAM_SHORT"], os.environ["FORK_VER"],
+                      os.environ["FORK_CODE"], os.environ["UPSTREAM_LOG"])
+          print(notes)
+          PYEOF
+          gh release create "$TAG" "$ASSET" \
+            --repo xiaoxun007/NexioSchedule-for-MiBand \
+            --title "$TAG" \
+            --notes-file /tmp/release_notes.md || echo "Release 已存在或创建失败（忽略）"
