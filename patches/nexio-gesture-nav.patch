@@ -1,5 +1,5 @@
 diff --git a/src/pages/index/index.ux b/src/pages/index/index.ux
-index ff39755..7621eab 100644
+index ff39755..a83ba9e 100644
 --- a/src/pages/index/index.ux
 +++ b/src/pages/index/index.ux
 @@ -51,7 +51,7 @@
@@ -11,7 +11,13 @@ index ff39755..7621eab 100644
        <text class="page-title">应用信息</text>
  
        <div class="card">
-@@ -157,6 +157,11 @@ import device from '@system.device'
+@@ -154,9 +154,17 @@ import schedule from '../../common/schedule'
+ import util from '../../common/util'
+ import device from '@system.device'
+ 
++/** 设计稿屏幕高（432×514）：校验起手 y 越界时安全降级为全屏切日 */
++const SCREEN_H = 514
++
  /** 左缘留给系统「右滑回桌面」的宽度，与 .sys-back-edge 保持一致（432 宽屏按屏宽比例放大） */
  const EDGE_W = 15
  
@@ -23,16 +29,36 @@ index ff39755..7621eab 100644
  export default {
    private: {
      isHome: true,
-@@ -350,6 +355,8 @@ export default {
-     const p = this.touchXY(t)
+@@ -342,14 +350,25 @@ export default {
+     if (!t) return null
+     const x = t.clientX != null ? t.clientX : t.pageX != null ? t.pageX : t.x
+     const y = t.clientY != null ? t.clientY : t.pageY != null ? t.pageY : t.y
+-    if (x == null || y == null) return null
++    if (x == null || y == null || !isFinite(x) || !isFinite(y)) return null
+     return { x: x, y: y }
+   },
++  // 从 touchstart 事件尽可能拿到起点坐标，多来源兜底：
++  // 官方 TouchEvent 为 e.touches[0]（Touch 对象含 clientY/pageY）；
++  // 部分运行态 touchstart 时 touches 未填充，改取 e.changedTouches[0]；
++  // 再退一步取事件对象本身（MouseEvent 风格直接带 clientX/Y）。
++  touchStartXY(e) {
++    if (!e) return null
++    return this.touchXY(e.touches && e.touches[0])
++      || this.touchXY(e.changedTouches && e.changedTouches[0])
++      || this.touchXY(e)
++  },
+   onTouchStart(e) {
+-    const t = e && e.touches && e.touches[0]
+-    const p = this.touchXY(t)
++    const p = this.touchStartXY(e)
      // 左缘起手不切日，留给系统「右滑回桌面」
      this._touchFromEdge = !!(p && p.x <= EDGE_W)
-+    // 记录起手 y，用于判定上部/下部手势区
-+    this._touchStartY = p ? p.y : -1
++    // 记录起手 y；拿不到则为 NaN（onSwipe 据此安全降级）
++    this._touchStartY = p ? p.y : NaN
      // 同一手势只允许触发一次切日（出入场双层都会挂 handler）
      this._gestureSwiped = false
    },
-@@ -362,10 +369,34 @@ export default {
+@@ -362,10 +381,46 @@ export default {
      if (this._gestureSwiped) return
      this._gestureSwiped = true
      const dir = e && e.direction
@@ -40,7 +66,19 @@ index ff39755..7621eab 100644
 -      this.goDay(1)
 -    } else if (dir === 'right') {
 -      this.goDay(-1)
-+    const y = this._touchStartY != null ? this._touchStartY : -1
++    // 安全降级：拿不到有效起手 y（NaN / 非数 / 越界 0~SCREEN_H）时，
++    // 一律按全屏切日处理，绝不进入「上部退出/关于」分支——退出是最危险操作，
++    // 坐标不可用时宁可失去分区功能，也不能误退出。
++    const y = this._touchStartY
++    const yValid = typeof y === 'number' && isFinite(y) && y >= 0 && y <= SCREEN_H
++    if (!yValid) {
++      if (dir === 'left') {
++        this.goDay(1)
++      } else if (dir === 'right') {
++        this.goDay(-1)
++      }
++      return
++    }
 +    if (y >= LOWER_ZONE_Y) {
 +      // 下部 Tab 区：左右滑切日期（保留 goDay）
 +      if (dir === 'left') {
@@ -71,7 +109,7 @@ index ff39755..7621eab 100644
      }
    },
    onTabHome() {
-@@ -761,12 +792,13 @@ export default {
+@@ -761,12 +816,13 @@ export default {
      margin-left: 6px;
    }
  
